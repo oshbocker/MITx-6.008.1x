@@ -87,27 +87,27 @@ def compute_posterior(prior, likelihood, y):
     # Get the log of the likelihoods
     log_likelihood = np.log(likelihood)
     # Create an answer vector of the same length as the prior vector
-    log_answer = np.array([0.]*len(prior))
-    # Create a scalar denominator for the Bayes' Rule equation
-    denominator = 0.
+    log_answer = np.zeros(len(prior))
     # Iterate through each probability in the prior vector
     for m in range(len(log_prior)):
         # For each prior probabilty compute the numerator of the Bayes' Rule
         # equation by adding the log_prior to the sum of the likelihood
         # for each observation in the y vector
         log_answer[m] = log_prior[m]+sum([log_likelihood[k,m] for k in y])
-        # Add teh previous result to our denominator
-        denominator += log_prior[m]+sum([log_likelihood[k,m] for k in y])
     
-    # Divide the numerator by the denominator to get our final result
-    log_answer = log_answer-denominator
+    # Divide the log_answer by the sum of the entries in the log answer to get our final result
+    sum_exp = np.log(0)    
+    for i in log_answer:
+        sum_exp = np.logaddexp(sum_exp, i)
+        
+    log_answer_norm = [log_answer-sum_exp]
     #
     # END OF YOUR CODE FOR PART (b)
     # -------------------------------------------------------------------------
 
     # do not exponentiate before this step
     # Normalize the posterior
-    posterior = np.exp(log_answer)/sum(np.exp(log_answer))
+    posterior = np.exp(log_answer_norm)/np.exp(log_answer_norm).sum()
     return posterior
 
 
@@ -136,13 +136,20 @@ def compute_movie_rating_likelihood(M):
     # Remember to normalize the likelihood, so that each column is a
     # probability distribution.
     #
-
+    for k in range(M):
+        for m in range(M):
+            if k == m:
+                likelihood[k][m] = 2
+            else:
+                likelihood[k][m] = 1/abs(k-m)
+    
+    alpha = likelihood.sum(axis=0)
+    likelihood = likelihood/alpha
     #
     # END OF YOUR CODE FOR PART (c)
     # -------------------------------------------------------------------------
 
     return likelihood
-
 
 def infer_true_movie_ratings(num_observations=-1):
     """
@@ -194,6 +201,14 @@ def infer_true_movie_ratings(num_observations=-1):
     # These are the output variables - it's your job to fill them.
     posteriors = np.zeros((num_movies, M))
     MAP_ratings = np.zeros(num_movies)
+    for movie in movie_id_list:
+        # Step 1
+        ratings = movie_data_helper.get_ratings(movie)[:num_observations]
+        # Step 2
+        posteriors[movie] = compute_posterior(prior, likelihood, ratings)
+        # Step 3
+        MAP_ratings[movie] = posteriors[movie].argmax()
+        
 
     #
     # END OF YOUR CODE FOR PART (d)
@@ -235,7 +250,7 @@ def compute_entropy(distribution):
     # END OF YOUR CODE FOR PART (f)
     # -------------------------------------------------------------------------
 
-    return entropy
+    #return entropy
 
 
 def compute_true_movie_rating_posterior_entropies(num_observations):

@@ -75,15 +75,22 @@ print("cs: ",cs, "\n\n")
 import scipy.special
 
 def c_given_d(q,d):
+    # This algorithm is wrong
     S = np.arange(1,5,1)
     exp_c_given_s = np.arange(1,5,1)
     denominator = sum([scipy.special.binom(4,x)*q**d*(1-q)**(x-d) for x in S[d:]])
     prob_S_given_D = [scipy.special.binom(4,x)*q**d*(1-q)**(x-d) if x >= d else 0. for x in S]/denominator
     prob_S_given_D_norm = prob_S_given_D/sum(prob_S_given_D)
-    return sum(exp_c_given_s*prob_S_given_D_norm), prob_S_given_D_norm
+    return sum(exp_c_given_s*prob_S_given_D_norm)
 
-print("q=0.2, d=1: ", c_given_d(0.2,1), "\n\n")
-print("q=0.5, d=2: ", c_given_d(0.5,2), "\n\n")
-print("q=0.7, d=3: ", c_given_d(0.7,3), "\n\n")
+def c_d(q,d):
+    S = np.arange(1,5,1)
+    d_s = [1/4*scipy.special.binom(s,d)*q**d*(1-q)**(s-d) for s in S]
+    s_d = d_s/sum(d_s)
+    return sum(S*s_d)
+    
+print("q=0.2, d=1: ", c_given_d(0.2,1), "\n", c_d(0.2,1), "\n")
+print("q=0.5, d=2: ", c_given_d(0.5,2), "\n", c_d(0.5,2), "\n")
+print("q=0.7, d=3: ", c_given_d(0.7,3), "\n", c_d(0.7,3), "\n")
 print("q=0.2, d=3: ", c_given_d(0.01,3))
 
