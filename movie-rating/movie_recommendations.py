@@ -95,12 +95,8 @@ def compute_posterior(prior, likelihood, y):
         # for each observation in the y vector
         log_answer[m] = log_prior[m]+sum([log_likelihood[k,m] for k in y])
     
-    # Divide the log_answer by the sum of the entries in the log answer to get our final result
-    sum_exp = np.log(0)    
-    for i in log_answer:
-        sum_exp = np.logaddexp(sum_exp, i)
-        
-    log_answer_norm = [log_answer-sum_exp]
+    # Divide the log_answer by the sum of the entries in the log answer to get our final result        
+    log_answer_norm = [log_answer-scipy.misc.logsumexp(log_answer)]
     #
     # END OF YOUR CODE FOR PART (b)
     # -------------------------------------------------------------------------
@@ -203,7 +199,10 @@ def infer_true_movie_ratings(num_observations=-1):
     MAP_ratings = np.zeros(num_movies)
     for movie in movie_id_list:
         # Step 1
-        ratings = movie_data_helper.get_ratings(movie)[:num_observations]
+        if num_observations != -1:
+            ratings = movie_data_helper.get_ratings(movie)[:num_observations]
+        else:
+            ratings = movie_data_helper.get_ratings(movie)
         # Step 2
         posteriors[movie] = compute_posterior(prior, likelihood, ratings)
         # Step 3
@@ -246,11 +245,12 @@ def compute_entropy(distribution):
     # - use log base 2
     # - enforce 0log0 = 0
 
+    entropy = sum([0. if x < 10e-8 else x*np.log2(1/x) for x in distribution])
     #
     # END OF YOUR CODE FOR PART (f)
     # -------------------------------------------------------------------------
 
-    #return entropy
+    return entropy
 
 
 def compute_true_movie_rating_posterior_entropies(num_observations):
@@ -277,7 +277,8 @@ def compute_true_movie_rating_posterior_entropies(num_observations):
     # YOUR CODE GOES HERE FOR PART (g)
     #
     # Make use of the compute_entropy function you coded in part (f).
-
+    posteriors, MAP_Ratings = infer_true_movie_ratings(num_observations)
+    posterior_entropies = [compute_entropy(x) for x in posteriors]
     #
     # END OF YOUR CODE FOR PART (g)
     # -------------------------------------------------------------------------
@@ -337,7 +338,24 @@ def main():
     # Place your code that calls the relevant functions here.  Make sure it's
     # easy for us graders to run your code. You may want to define multiple
     # functions for each of the parts of this problem, and call them here.
-
+    num_observations = -1    
+    posteriors, MAP_Ratings = infer_true_movie_ratings(num_observations)
+    top_ten_movies = []
+    movie_id = 0
+    while len(top_ten_movies) < 10:
+        if MAP_Ratings[movie_id] == 10.:
+            top_ten_movies.append(movie_data_helper.get_movie_name(movie_id))
+        movie_id += 1
+    
+    print(top_ten_movies)
+    
+    # Plot entropies as a function of num_observations
+    observations = range(1,201)
+    entropies = []
+    for o in observations:
+        entropies.append(sum(compute_true_movie_rating_posterior_entropies(o)))
+    
+    plt.plot(observations, entropies)
     #
     # END OF YOUR CODE FOR TESTING
     # -------------------------------------------------------------------------

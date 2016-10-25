@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+Ed# -*- coding: utf-8 -*-
 """
 Spyder Editor
 
