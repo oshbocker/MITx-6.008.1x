@@ -63,7 +63,7 @@ def forward_backward(observations):
     num_hidden_states = len(all_possible_hidden_states)
     
     # TODO: Compute the forward messages
-    forward_messages = np.zeros((num_time_steps+1,num_hidden_states))
+    forward_messages = np.zeros((num_time_steps,num_hidden_states))
     for i in range(num_hidden_states):    
         forward_messages[0,i] = prior_distribution[all_possible_hidden_states[i]]
     # Create a dictionary to index observed states
@@ -98,41 +98,35 @@ def forward_backward(observations):
     B = np.array([[emission_dict[i][j] for j in all_possible_observed_states] for i in all_possible_hidden_states])
     
     # Iterate through observations and calculate forward messages
-    for o in range(num_time_steps):
-        obs = observation_index_dict[observations[o]]
-        forward_messages[o+1,:] = (B[:,obs]*forward_messages[o]) @ A
-       
-    msgno = 2
-    msg = forward_messages[msgno]
-    norm = msg/msg.sum()
-    print('Normalizing factor forward = {} for message {}'.format(msg.sum(), msgno))       
-    print([(i, m) for i, m in enumerate(norm) if m != 0][:4])
-    print([(all_possible_hidden_states[i], m) for i, m in enumerate(norm) if m != 0][:4], '\n\n')   
+    for o in range(num_time_steps-1):
+        if observations[o] == None:
+            forward_messages[o+1,:] = (forward_messages[o]) @ A
+        else:
+            obs = observation_index_dict[observations[o]]
+            forward_messages[o+1,:] = (B[:,obs]*forward_messages[o]) @ A
 
     # TODO: Compute the backward messages      
     backward_messages = np.zeros((num_time_steps,len(all_possible_hidden_states)))
     backward_messages[num_time_steps-1,:] = 1/num_hidden_states
     
     # Iterate through observations in reverse order and calculate backwards messages
-    for o in reversed(range(num_time_steps)):
-        obs = observation_index_dict[observations[o]]
-        backward_messages[o-1,:] = (B[:,obs]*backward_messages[o]) @ A.T
-        
-    msgno = 97
-    msg = backward_messages[msgno]
-    norm = msg/msg.sum()
-    print('Normalizing factor backward = {} for message {}'.format(msg.sum(), msgno))       
-    print([(i, m) for i, m in enumerate(norm) if m != 0][:4])
-    print([(all_possible_hidden_states[i], m) for i, m in enumerate(norm) if m != 0][:4], '\n\n')   
-
-
+    for o in reversed(range(1,num_time_steps)):
+        if observations[o] == None:
+            backward_messages[o-1,:] = (backward_messages[o]) @ A.T
+        else:
+            obs = observation_index_dict[observations[o]]
+            backward_messages[o-1,:] = (B[:,obs]*backward_messages[o]) @ A.T
+            
     # TODO: Compute the marginals 
     marginals = [None] * num_time_steps # remove this
     marginal_matrix = np.zeros((num_time_steps,num_hidden_states))
     
     for o in range(num_time_steps):
-        obs = observation_index_dict[observations[o]]
-        marginal = forward_messages[o,:]*backward_messages[o,:]*B[:,obs]
+        if observations[o] == None:
+            marginal = forward_messages[o,:]*backward_messages[o,:]
+        else:
+            obs = observation_index_dict[observations[o]]
+            marginal = forward_messages[o,:]*backward_messages[o,:]*B[:,obs]
         marginal_dist = robot.Distribution()
         for m in range(num_hidden_states):
             marginal_dist[all_possible_hidden_states[m]] = marginal[m]
