@@ -7,6 +7,7 @@ import sys
 import graphics
 import numpy as np
 import robot
+from pprint import pprint
 
 
 # Throughout the code, we use these variables.
@@ -66,6 +67,7 @@ def forward_backward(observations):
     forward_messages = np.zeros((num_time_steps,num_hidden_states))
     for i in range(num_hidden_states):    
         forward_messages[0,i] = prior_distribution[all_possible_hidden_states[i]]
+        
     # Create a dictionary to index observed states
     observation_index_dict = {all_possible_observed_states[i]:i for i in range(len(all_possible_observed_states))}
     
@@ -144,19 +146,66 @@ def Viterbi(observations):
 
     Output
     ------
-    A list of esimated hidden states, each encoded as a tuple
+    A list of estimated hidden states, each encoded as a tuple
     (<x>, <y>, <action>)
     """
 
-    # -------------------------------------------------------------------------
-    # YOUR CODE GOES HERE
-    #
-
-
     num_time_steps = len(observations)
-    estimated_hidden_states = [None] * num_time_steps # remove this
+    num_hidden_states = len(all_possible_hidden_states)
+ 
+    messages = np.zeros((num_time_steps,num_hidden_states))
+    for i in range(num_hidden_states):    
+        messages[0,i] = -np.log2(prior_distribution[all_possible_hidden_states[i]])
+    tracebacks = np.zeros((num_time_steps-1,num_hidden_states))
+        
+    # Create a dictionary to index observed states
+    observation_index_dict = {all_possible_observed_states[i]:i for i in range(len(all_possible_observed_states))}
+    
+    # Create a transition dictionary based on all possible hidden states
+    transition_dict = {}
+    for i in all_possible_hidden_states:
+        transition_dict[i] = {}
+        transitions = transition_model(i)
+        for j in all_possible_hidden_states:
+            if j in transitions:
+                transition_dict[i][j] = -np.log2(transitions[j])
+            else:
+                transition_dict[i][j] = -np.log2(0)
+    
+    # Convert transition dictionary to a numpy array
+    psi = np.array([[transition_dict[i][j] for j in all_possible_hidden_states] for i in all_possible_hidden_states])   
+    
+    # Create an emission dictionary based on all possible hidden states
+    observation_dict = {}
+    for i in all_possible_hidden_states:
+        observation_dict[i] = {}
+        obs = observation_model(i)
+        for j in all_possible_observed_states:
+            if j in obs:
+                observation_dict[i][j] = -np.log2(obs[j])
+            else:
+                observation_dict[i][j] = -np.log2(0)
+    
+    # Convert emission dictionary to a numpy array
+    phi = np.array([[observation_dict[i][j] for j in all_possible_observed_states] for i in all_possible_hidden_states])
 
-    return estimated_hidden_states
+    # Iterate through observations and calculate forward messages
+    for o in range(1,num_time_steps):
+        if observations[o-1] == None:
+            new_matrix = psi.T + messages[o-1,:]
+        else:
+            obs = observation_index_dict[observations[o-1]]
+            new_matrix = phi[:,obs] + psi.T + messages[o-1,:]
+        messages[o,:] = np.amin(new_matrix,axis=1)
+        tracebacks[o-1,:] = np.argmin(new_matrix,axis=1)
+    
+    breadcrumbs = np.zeros(num_time_steps)
+    breadcrumbs[-1] = np.argmin(phi[:,observation_index_dict[observations[-1]]] + messages[-1,:])
+    for i in reversed(range(0,num_time_steps-1)):
+        breadcrumbs[i] = tracebacks[i,int(breadcrumbs[i+1])]
+   
+    estimated_hidden_states = [all_possible_hidden_states[int(i)] for i in breadcrumbs]    
+    return estimated_hidden_states[0:]
 
 
 def second_best(observations):
@@ -172,13 +221,61 @@ def second_best(observations):
     (<x>, <y>, <action>)
     """
 
-    # -------------------------------------------------------------------------
-    # YOUR CODE GOES HERE
-    #
-
-
     num_time_steps = len(observations)
-    estimated_hidden_states = [None] * num_time_steps # remove this
+    num_hidden_states = len(all_possible_hidden_states)
+ 
+    messages = np.zeros((num_time_steps,num_hidden_states))
+    for i in range(num_hidden_states):    
+        messages[0,i] = -np.log2(prior_distribution[all_possible_hidden_states[i]])
+    tracebacks = np.zeros((num_time_steps-1,num_hidden_states))
+        
+    # Create a dictionary to index observed states
+    observation_index_dict = {all_possible_observed_states[i]:i for i in range(len(all_possible_observed_states))}
+    
+    # Create a transition dictionary based on all possible hidden states
+    transition_dict = {}
+    for i in all_possible_hidden_states:
+        transition_dict[i] = {}
+        transitions = transition_model(i)
+        for j in all_possible_hidden_states:
+            if j in transitions:
+                transition_dict[i][j] = -np.log2(transitions[j])
+            else:
+                transition_dict[i][j] = -np.log2(0)
+    
+    # Convert transition dictionary to a numpy array
+    psi = np.array([[transition_dict[i][j] for j in all_possible_hidden_states] for i in all_possible_hidden_states])   
+    
+    # Create an emission dictionary based on all possible hidden states
+    observation_dict = {}
+    for i in all_possible_hidden_states:
+        observation_dict[i] = {}
+        obs = observation_model(i)
+        for j in all_possible_observed_states:
+            if j in obs:
+                observation_dict[i][j] = -np.log2(obs[j])
+            else:
+                observation_dict[i][j] = -np.log2(0)
+    
+    # Convert emission dictionary to a numpy array
+    phi = np.array([[observation_dict[i][j] for j in all_possible_observed_states] for i in all_possible_hidden_states])
+
+    # Iterate through observations and calculate forward messages
+    for o in range(1,num_time_steps):
+        if observations[o-1] == None:
+            new_matrix = psi.T + messages[o-1,:]
+        else:
+            obs = observation_index_dict[observations[o-1]]
+            new_matrix = phi[:,obs] + psi.T + messages[o-1,:]
+        messages[o,:] = np.amin(new_matrix,axis=1)
+        tracebacks[o-1,:] = np.argmin(new_matrix,axis=1)
+    
+    breadcrumbs = np.zeros(num_time_steps)
+    breadcrumbs[-1] = np.argsort(phi[:,observation_index_dict[observations[-1]]] + messages[-1,:])[1]
+    for i in reversed(range(0,num_time_steps-1)):
+        breadcrumbs[i] = tracebacks[i,int(breadcrumbs[i+1])]
+   
+    estimated_hidden_states = [all_possible_hidden_states[int(i)] for i in breadcrumbs] 
 
     return estimated_hidden_states
 
