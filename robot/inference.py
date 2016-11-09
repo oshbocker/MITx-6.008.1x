@@ -219,16 +219,26 @@ def second_best(observations):
     ------
     A list of esimated hidden states, each encoded as a tuple
     (<x>, <y>, <action>)
+    
+    Refer to this paper and the Serial LVA algorithm:
+    http://www2.ensc.sfu.ca/people/faculty/cavers/ENSC805/readings/42comm02-seshadri.pdf
     """
 
+    # Set up counters for later use
     num_time_steps = len(observations)
     num_hidden_states = len(all_possible_hidden_states)
  
-    messages = np.zeros((num_time_steps,num_hidden_states))
+    # Set up the best and second best messages with initial probabilities
+    best_messages = np.zeros((num_time_steps,num_hidden_states))
     for i in range(num_hidden_states):    
-        messages[0,i] = -np.log2(prior_distribution[all_possible_hidden_states[i]])
-    tracebacks = np.zeros((num_time_steps-1,num_hidden_states))
-        
+        best_messages[0,i] = -np.log2(prior_distribution[all_possible_hidden_states[i]])
+    
+    second_messages = np.zeros((num_time_steps,num_hidden_states))
+    for i in range(num_hidden_states):    
+        second_messages[0,i] = -np.log2(prior_distribution[all_possible_hidden_states[i]])
+    
+    best_tracebacks = np.zeros((num_time_steps-1,num_hidden_states))
+    second_tracebacks = np.zeros((num_time_steps-1,num_hidden_states))      
     # Create a dictionary to index observed states
     observation_index_dict = {all_possible_observed_states[i]:i for i in range(len(all_possible_observed_states))}
     
@@ -260,21 +270,86 @@ def second_best(observations):
     # Convert emission dictionary to a numpy array
     phi = np.array([[observation_dict[i][j] for j in all_possible_observed_states] for i in all_possible_hidden_states])
 
-    # Iterate through observations and calculate forward messages
-    for o in range(1,num_time_steps):
+    # Define a function to get the second min
+    def second_min(m, axis=1):
+        if axis == None:
+            sec = np.argsort(m)[1]
+            sec_min = m[sec]
+        else:
+            sec = np.argsort(m, axis=axis)[:,1]
+            sec_min = np.zeros(len(sec))
+            for i in range(len(sec_min)):
+                sec_min[i] = m[i,sec[i]]
+        return sec_min
+
+    # Initialize a merge array that indicates the second best path
+    # has merged into the best path at any given state
+    merge_array = np.zeros((num_time_steps,num_hidden_states))
+    
+    # Initialize the best and second best messages  
+    if observations[0] == None:   
+        init_matrix = psi.T + best_messages[0,:]
+    else:
+        obs = observation_index_dict[observations[0]]
+        init_matrix = phi[:,obs] + psi.T + best_messages[0,:]       
+    best_messages[1,:] = np.amin(init_matrix,axis=1)
+    second_messages[1,:] = second_min(init_matrix)
+    best_tracebacks[0,:] = np.argmin(init_matrix,axis=1)
+    second_tracebacks[0,:] = np.argsort(init_matrix,axis=1)[:,1]
+    merge_array[0,:] = False
+    
+    # Iterate through observations and calculate forward messages        
+    for o in range(2,num_time_steps):
         if observations[o-1] == None:
-            new_matrix = psi.T + messages[o-1,:]
+            best_matrix = psi.T + best_messages[o-1,:]
+            second_matrix = psi.T + second_messages[o-1,:]
         else:
             obs = observation_index_dict[observations[o-1]]
-            new_matrix = phi[:,obs] + psi.T + messages[o-1,:]
-        messages[o,:] = np.amin(new_matrix,axis=1)
-        tracebacks[o-1,:] = np.argmin(new_matrix,axis=1)
+            best_matrix = phi[:,obs] + psi.T + best_messages[o-1,:]
+            second_matrix = phi[:,obs] + psi.T + second_messages[o-1,:]
+        best_messages[o,:] = np.amin(best_matrix,axis=1)
+        best_tracebacks[o-1,:] = np.argmin(best_matrix,axis=1)
+        option_1 = second_min(best_matrix)
+        option_2 = np.amin(second_matrix,axis=1)
+        # Compare each state in the best path and second best path
+        for i in range(len(option_1)):
+            if option_1[i] < option_2[i]:
+                option_1_trace = np.argsort(best_matrix,axis=1)[:,1]
+                second_messages[o,i] = option_1[i]
+                second_tracebacks[o-1,i] = option_1_trace[i]
+                merge_array[o-1,i] = True
+            else:
+                option_2_trace = np.argmin(second_matrix,axis=1)
+                second_messages[o,i] = option_2[i]
+                second_tracebacks[o-1,i] = option_2_trace[i]
+                merge_array[o-1,i] = False
     
+    # Set up breadcrumbs to follow tracebacks and get second best path
     breadcrumbs = np.zeros(num_time_steps)
-    breadcrumbs[-1] = np.argsort(phi[:,observation_index_dict[observations[-1]]] + messages[-1,:])[1]
-    for i in reversed(range(0,num_time_steps-1)):
-        breadcrumbs[i] = tracebacks[i,int(breadcrumbs[i+1])]
-   
+    # Find out whether the last state is on the second bets path or best path
+    option_1 = second_min(phi[:,observation_index_dict[observations[-1]]] + best_messages[-1,:],axis=None)
+    option_2 = np.amin(phi[:,observation_index_dict[observations[-1]]] + second_messages[-1,:])
+    # Need to understand once we have switched from second best path to best path    
+    indicator = False
+    # If we already switched from second best path to best than we just follow the best path
+    if option_1 < option_2:
+        breadcrumbs[-1] = np.argsort(phi[:,observation_index_dict[observations[-1]]] + best_messages[-1,:])[1]
+        for i in reversed(range(0,num_time_steps-1)):
+            breadcrumbs[i] = best_tracebacks[i,int(breadcrumbs[i+1])]
+    else:
+        # If we are on the second best path we look to the merge array to find out
+        # when to merge with the best path        
+        breadcrumbs[-1] = np.argmin(phi[:,observation_index_dict[observations[-1]]] + second_messages[-1,:])
+        for i in reversed(range(0,num_time_steps-1)):
+            if indicator == False:
+                if merge_array[i,int(breadcrumbs[i+1])] == 1:
+                    indicator = True
+                # Until we get the merge indicator we stick with second best path
+                breadcrumbs[i] = second_tracebacks[i,int(breadcrumbs[i+1])]
+            else:
+                # After merge we follow best path
+                breadcrumbs[i] = best_tracebacks[i,int(breadcrumbs[i+1])]
+
     estimated_hidden_states = [all_possible_hidden_states[int(i)] for i in breadcrumbs] 
 
     return estimated_hidden_states
