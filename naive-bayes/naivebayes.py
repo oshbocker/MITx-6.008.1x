@@ -1,6 +1,8 @@
 import sys
 import os.path
 import numpy as np
+from collections import Counter
+from scipy.misc import logsumexp
 
 import util
 
@@ -21,7 +23,12 @@ def get_counts(file_list):
     key occurred in.
     """
     ### TODO: Comment out the following line and write your code here
-    raise NotImplementedError
+    word_count = Counter()
+    for file in file_list:
+        for word in set(util.get_words_in_file(file)):
+            word_count[word] += 1
+            
+    return word_count
 
 def get_log_probabilities(file_list):
     """
@@ -43,8 +50,14 @@ def get_log_probabilities(file_list):
     The data structure util.DefaultDict will be useful to you here, as will the
     get_counts() helper above.
     """
-    ### TODO: Comment out the following line and write your code here
-    raise NotImplementedError
+    word_counts = get_counts(file_list)
+    log_probs = Counter()
+    num_files = len(file_list)
+    
+    for word in word_counts.keys():
+        log_probs[word] = np.log((word_counts[word]+1)/(num_files+2))
+
+    return log_probs
 
 
 def learn_distributions(file_lists_by_category):
@@ -67,8 +80,22 @@ def learn_distributions(file_lists_by_category):
                             each class:
                             [est. for log P(c=spam), est. for log P(c=ham)]
     """
-    ### TODO: Comment out the following line and write your code here
-    raise NotImplementedError
+    spam_list = file_lists_by_category[0]
+    ham_list = file_lists_by_category[1]
+    spam_probs = get_log_probabilities(spam_list)
+    ham_probs = get_log_probabilities(ham_list)
+    log_probabilities_by_category = [spam_probs, ham_probs]
+    
+    num_spam = len(spam_list)
+    num_ham = len(ham_list)
+    num_total = num_spam + num_ham
+    
+    prob_spam = np.log(num_spam/num_total)
+    prob_ham = np.log(num_ham/num_total)
+    
+    log_prior = [prob_spam, prob_ham]
+    return (log_probabilities_by_category, log_prior)
+
 
 def classify_email(email_filename,
                    log_probabilities_by_category,
@@ -88,8 +115,38 @@ def classify_email(email_filename,
     ------
     One of the labels in names.
     """
-    ### TODO: Comment out the following line and write your code here
-    return 'spam'
+    prob_spam = log_prior_by_category[0]
+    prob_ham = log_prior_by_category[1]
+    spam_probs = log_probabilities_by_category[0]
+    ham_probs = log_probabilities_by_category[1]
+    
+    spam_probs_cond = 0
+    ham_probs_cond = 0
+    
+    # For each word in the email get the prob of it appearing in spam or ham
+    # If the word was not in the training dataset, assign it the 1/(# of words in relevant dictionary + 2)
+    email_words = util.get_words_in_file(email_filename)
+    for word in email_words:
+        if word not in spam_probs.keys():
+            spam_probs_cond += -np.log(len(spam_probs.keys())+2)
+        else:
+            spam_probs_cond += spam_probs[word]
+        if word not in ham_probs.keys():
+            ham_probs_cond += -np.log(len(ham_probs.keys())+2)
+        else:
+            ham_probs_cond += ham_probs[word]
+    
+    # Using Bayes' Theorem calculate the log probability of spam and ham        
+    spam = (prob_spam+spam_probs_cond)/logsumexp([prob_spam+spam_probs_cond,prob_ham+ham_probs_cond])
+    ham = (prob_ham+ham_probs_cond)/logsumexp([prob_spam+spam_probs_cond,prob_ham+ham_probs_cond])
+     
+    # If the prob of spam is higher return spam o.w. ham 
+    if spam/ham > 1:
+        return 'ham'
+    else:
+        return 'spam'
+
+
 
 def classify_emails(spam_files, ham_files, test_files):
     # DO NOT MODIFY -- used by the autograder
@@ -105,7 +162,7 @@ def classify_emails(spam_files, ham_files, test_files):
 def main():
     ### Read arguments
     if len(sys.argv) != 4:
-        print USAGE % sys.argv[0]
+        print(USAGE % sys.argv[0])
     testing_folder = sys.argv[1]
     (spam_folder, ham_folder) = sys.argv[2:4]
 
