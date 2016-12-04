@@ -113,6 +113,13 @@ def compute_empirical_distribution(values):
     # -------------------------------------------------------------------------
     # YOUR CODE HERE
     #
+    point_prob = 1/len(values)
+    
+    for i in values:
+        if i in distribution.keys():
+            distribution[i] += point_prob
+        else:
+            distribution[i] = point_prob
 
     #
     # END OF YOUR CODE
@@ -143,6 +150,28 @@ def compute_empirical_mutual_info_nats(var1_values, var2_values):
     #
 
     empirical_mutual_info_nats = 0.0
+    indep_dis = {}    
+    var1_dis = compute_empirical_distribution(var1_values)
+    var2_dis = compute_empirical_distribution(var2_values)
+    joint_values = [(var1_values[i],var2_values[i]) for i in range(len(var1_values))]
+    joint_dis = compute_empirical_distribution(joint_values)
+    for a in var1_dis.keys():
+        for b in var2_dis.keys():
+            indep_dis[(a,b)] = var1_dis[a]*var2_dis[b]
+
+    info_divergence = lambda p, q: np.sum(p * np.log(p/q))
+    
+    indep_prob = np.zeros((3,3))
+    for i in indep_dis.keys():
+        indep_prob[i] = indep_dis[i]
+
+    joint_prob = np.zeros((3,3))
+    for i in joint_dis.keys():
+        joint_prob[i] = joint_dis[i]
+
+    empirical_mutual_info_nats = info_divergence(joint_prob,indep_prob)
+
+    
 
     #
     # END OF YOUR CODE
@@ -176,13 +205,34 @@ def chow_liu(observations):
     num_obs, num_vars = observations.shape
     union_find = UnionFind(range(num_vars))
 
-    # -------------------------------------------------------------------------
-    # YOUR CODE HERE
-    #
-
-    #
-    # END OF YOUR CODE
-    # -------------------------------------------------------------------------
+    # Create the edges in the graph
+    def possible_edges(g):
+        edges = []
+        for i in range(g):
+            for j in range(g):
+                if i != j:
+                    if (i,j) not in edges and (j,i) not in edges:
+                        edges.append((i,j))
+        return edges
+        
+    e = possible_edges(observations.shape[1])
+    
+    # Compute the emprirical mutual information nats for each eadge
+    edge_dict = {}
+    for edge in e:
+        edge_dict[edge] = compute_empirical_mutual_info_nats(observations[:,edge[0]],observations[:,edge[1]])
+    
+    # Sort the computed edge potentials from highest to lowest
+    import operator
+    sorted_edges = sorted(edge_dict.items(), key=operator.itemgetter(1), reverse=True)  
+    
+    # Iterate through sorted edges adding edges highest to lowest and checking
+    # to ensure that no cycles are created
+    for edge_tuple in sorted_edges:
+        edge = edge_tuple[0]
+        if not (union_find.find(edge[0]) == union_find.find(edge[1])):
+            union_find.union(edge[0],edge[1])
+            best_tree.add(edge)
 
     return best_tree
 
